@@ -13,8 +13,36 @@
     <button class="btn btn-secondary">Import CSV</button>
     <a class="btn btn-outline-secondary" href="{% url 'portal:templates_export' %}">Export CSV</a>
   </form>
-  <a class="btn btn-success" href="{% url 'portal:template_add' %}"><i class="bi bi-plus"></i> Enter Template</a>
+
+  <!-- 🔽 Trigger button for modal -->
+  <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addTemplateModal">
+    <i class="bi bi-plus"></i> Add Template
+  </button>
 </div>
+
+
+<!-- ===== Bootstrap Modal for Adding Template ===== -->
+<div class="modal fade" id="addTemplateModal" tabindex="-1" aria-labelledby="addTemplateModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <form method="post" action="{% url 'portal:template_add' %}" enctype="multipart/form-data">
+        {% csrf_token %}
+        <div class="modal-header">
+          <h5 class="modal-title" id="addTemplateModalLabel">Add Template</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          {{ form.as_p }}
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-success">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+<!-- ============================================= -->
 
 <div class="table-responsive">
 <table class="table table-striped align-middle">

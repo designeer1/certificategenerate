@@ -251,7 +251,12 @@ def templates_list(request):
         qs = qs.filter(Q(name__icontains=q) | Q(course__icontains=q))
     paginator = Paginator(qs, 10)
     page_obj = paginator.get_page(request.GET.get('page'))
-    return render(request, 'portal/templates.html', {'page_obj': page_obj, 'q': q})
+
+    return render(request, 'portal/templates.html', {
+        'page_obj': page_obj,
+        'q': q,
+        'form': TemplateForm(),   # 🔽 add this for modal
+    })
 
 @login_required
 def template_create(request):
