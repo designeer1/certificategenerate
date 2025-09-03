@@ -13,19 +13,31 @@ class Template(models.Model):
     def __str__(self):
         return f"{self.name} ({self.course})"
 
+# In portal/models.py
 class Student(models.Model):
     sno = models.AutoField(primary_key=True)
-    hallticket = models.CharField(max_length=64, unique=True)
-    name = models.CharField(max_length=120)
-    course = models.CharField(max_length=120)
+    hallticket = models.CharField(max_length=20, unique=True)
+    name = models.CharField(max_length=100)
+    course = models.CharField(max_length=50)
     email = models.EmailField()
-    phone = models.CharField(max_length=20, blank=True)
-    template = models.ForeignKey(Template, null=True, blank=True, on_delete=models.SET_NULL)
-    # last generated certificate for quick access
-    last_certificate = models.FileField(upload_to='certificates/', blank=True)
+    phone = models.CharField(max_length=15, blank=True)
+    template = models.ForeignKey("Template", on_delete=models.SET_NULL, null=True, blank=True)
+    last_certificate = models.CharField(max_length=200, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)  # ✅ only auto_now_add
+
+    class Meta:
+        ordering = ['sno']
 
     def __str__(self):
-        return f"{self.hallticket} - {self.name}"
+        return f"{self.name} ({self.hallticket})"
+  
+
+    class Meta:
+        ordering = ['sno']
+
+    def __str__(self):
+        return f"{self.name} ({self.hallticket})"
+
 
 class Certificate(models.Model):
     student = models.ForeignKey(Student, on_delete=models.CASCADE)
@@ -46,3 +58,28 @@ class SendLog(models.Model):
 
     def __str__(self):
         return f"{self.recipient_email} - {self.status} - {self.sent_at:%Y-%m-%d %H:%M}"
+    
+from django.db import models
+from django.utils import timezone
+
+class ReportSuccess(models.Model):
+    student_name = models.CharField(max_length=100)
+    hallticket = models.CharField(max_length=50)
+    course = models.CharField(max_length=100)
+    message = models.TextField(default="Processed successfully")
+    created_at = models.DateTimeField(default=timezone.now)
+
+    def __str__(self):
+        return f"✅ {self.student_name} - {self.hallticket}"
+
+
+class ReportError(models.Model):
+    student_name = models.CharField(max_length=100, blank=True, null=True)
+    hallticket = models.CharField(max_length=50, blank=True, null=True)
+    course = models.CharField(max_length=100, blank=True, null=True)
+    error_message = models.TextField()
+    created_at = models.DateTimeField(default=timezone.now)
+
+    def __str__(self):
+        return f"❌ {self.student_name or 'Unknown'} - {self.error_message[:30]}"
+

@@ -8,23 +8,32 @@ from django.contrib import messages
 from django.db.models import Q
 from django.core.mail import EmailMessage
 from django.conf import settings
+import json
 
 from .models import Student, Template, SendLog, Certificate
 from .forms import TemplateForm, StudentForm, CSVImportForm
 from .utils import generate_certificate_image, save_certificate
 
+# In portal/views.py
 @login_required
 def students(request):
     q = request.GET.get('q','').strip()
+    
     qs = Student.objects.all().select_related('template').order_by('sno')
     if q:
         qs = qs.filter(Q(name__icontains=q) | Q(email__icontains=q) | Q(hallticket__icontains=q) | Q(course__icontains=q))
+    
+    total_count = qs.count()
+    
     paginator = Paginator(qs, 5)
     page = request.GET.get('page')
     page_obj = paginator.get_page(page)
 
     return render(request, 'portal/students.html', {
-        'page_obj': page_obj, 'q': q, 'csv_form': CSVImportForm(),
+        'page_obj': page_obj, 
+        'q': q, 
+        'csv_form': CSVImportForm(),
+        'total_count': total_count,
     })
 
 @login_required
@@ -79,6 +88,7 @@ def students_export_csv(request):
         writer.writerow([s.sno, s.hallticket, s.name, s.course, s.email, s.phone, s.template.name if s.template else ''])
     return response
 
+# In portal/views.py
 @login_required
 def students_import_csv(request):
     if request.method != 'POST':
@@ -94,6 +104,10 @@ def students_import_csv(request):
     reader = csv.DictReader(data)
 
     created = 0
+    # Get the last student number to continue from there
+    last_student = Student.objects.order_by('-sno').first()
+    next_sno = last_student.sno + 1 if last_student else 1
+    
     for row in reader:
         # normalize keys (lowercase & strip spaces)
         row = {k.strip().lower(): (v or "").strip() for k, v in row.items()}
@@ -107,19 +121,23 @@ def students_import_csv(request):
         if not hallticket:
             continue
 
-        stu, created_flag = Student.objects.get_or_create(
+        # Check if student already exists
+        if Student.objects.filter(hallticket=hallticket).exists():
+            continue
+
+        # Create new student with manual sno
+        stu = Student.objects.create(
+            sno=next_sno,
             hallticket=hallticket,
-            defaults={
-                'name': name,
-                'course': course,
-                'email': email,
-                'phone': phone,
-            }
+            name=name,
+            course=course,
+            email=email,
+            phone=phone,
         )
-        if created_flag:
-            stu.template = Template.objects.filter(course=course).first()
-            stu.save()
-            created += 1
+        stu.template = Template.objects.filter(course=course).first()
+        stu.save()
+        created += 1
+        next_sno += 1
 
     messages.success(request, f"Imported {created} new students.")
     return redirect('portal:students')
@@ -160,12 +178,25 @@ def send_single(request, sno):
 
 @login_required
 def bulk_send(request):
-    # AJAX POST with ids[]
+    # Handle both POST with ids[] and select_all parameter
     if request.method != 'POST':
         return JsonResponse({'ok': False, 'error': 'POST required'}, status=400)
-    ids = request.POST.getlist('ids[]')
+    
+    select_all = request.POST.get('select_all', '') == 'true'
+    q = request.POST.get('q', '').strip()
+    
+    if select_all:
+        # Get all students matching the search query
+        qs = Student.objects.all()
+        if q:
+            qs = qs.filter(Q(name__icontains=q) | Q(email__icontains=q) | Q(hallticket__icontains=q) | Q(course__icontains=q))
+        student_ids = list(qs.values_list('sno', flat=True))
+    else:
+        # Get selected student IDs
+        student_ids = request.POST.getlist('ids[]')
+    
     done, errors = 0, 0
-    for sid in ids:
+    for sid in student_ids:
         try:
             s = Student.objects.get(sno=sid)
             cert = _make_and_attach_certificate(s)
@@ -181,7 +212,13 @@ def bulk_send(request):
         except Exception as e:
             SendLog.objects.create(student=s, recipient_email=s.email, status='ERROR', error_reason=str(e))
             errors += 1
-    return JsonResponse({'ok': True, 'sent': done, 'errors': errors})
+    
+    # Clear selection after sending
+    if 'studentSelection' in request.session:
+        del request.session['studentSelection']
+    
+    messages.success(request, f"Sent {done} certificates successfully. {errors} failed.")
+    return redirect('portal:students')
 
 @login_required
 def reports(request):
@@ -321,3 +358,33 @@ def templates_import_csv(request):
             created += 1
     messages.success(request, f"Imported {created} templates (upload images individually).")
     return redirect('portal:templates_list')
+
+
+@login_required
+def bulk_delete(request):
+    if request.method != 'POST':
+        return JsonResponse({'ok': False, 'error': 'POST required'}, status=400)
+    
+    select_all = request.POST.get('select_all', '') == 'true'
+    q = request.POST.get('q', '').strip()
+    
+    if select_all:
+        # Get all students matching the search query
+        qs = Student.objects.all()
+        if q:
+            qs = qs.filter(Q(name__icontains=q) | Q(email__icontains=q) | Q(hallticket__icontains=q) | Q(course__icontains=q))
+        deleted_count = qs.count()
+        qs.delete()
+    else:
+        # Get selected student IDs
+        student_ids = request.POST.getlist('ids[]')
+        qs = Student.objects.filter(sno__in=student_ids)
+        deleted_count = qs.count()
+        qs.delete()
+    
+    # Clear selection after deletion
+    if 'studentSelection' in request.session:
+        del request.session['studentSelection']
+    
+    messages.success(request, f"Deleted {deleted_count} students successfully.")
+    return redirect('portal:students')

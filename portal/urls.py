@@ -28,4 +28,6 @@ urlpatterns = [
     # Sending certificates
     path("students/<int:sno>/send/", views.send_single, name="send_single"),
     path("students/bulk_send/", views.bulk_send, name="bulk_send"),
+    path("students/bulk_delete/", views.bulk_delete, name="bulk_delete"),
+
 ]
